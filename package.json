@@ -58,7 +58,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
-    "viem": "^2.55.4",
+    "viem": "^2.55.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
