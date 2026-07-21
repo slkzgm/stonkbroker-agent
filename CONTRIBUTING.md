@@ -4,7 +4,7 @@ Thanks for helping improve StonkBroker Agent.
 
 ## Development setup
 
-You need Node.js 20+ and pnpm 11.
+You need Node.js 20+ and pnpm 10.
 
 ```bash
 git clone https://github.com/slkzgm/stonkbroker-agent.git

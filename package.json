@@ -49,12 +49,12 @@
     "verify:chain": "tsx src/verify-chain.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepare": "npm run build"
+    "prepare": "tsc -p tsconfig.json"
   },
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@11.11.0",
+  "packageManager": "pnpm@10.34.5",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
