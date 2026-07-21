@@ -1,8 +1,13 @@
-import { X_API_URL } from "./constants.js";
+import { X_API_URL, X_API_USER_ME_URL } from "./constants.js";
 import type { TradePost } from "./types.js";
 
 interface XCreatePostResponse {
   data?: { id?: string; text?: string };
+  errors?: unknown;
+}
+
+interface XUserMeResponse {
+  data?: { id?: string; username?: string };
   errors?: unknown;
 }
 
@@ -21,6 +26,28 @@ export class XPublisher {
 
   get configured(): boolean {
     return this.dryRun || Boolean(this.userAccessToken);
+  }
+
+  async verifyCredentials(): Promise<{ id: string; username?: string; dryRun: boolean }> {
+    if (this.dryRun) return { id: "dry-run", dryRun: true };
+    if (!this.userAccessToken) throw new Error("X_USER_ACCESS_TOKEN is not configured");
+
+    const response = await this.fetcher(X_API_USER_ME_URL, {
+      headers: { authorization: `Bearer ${this.userAccessToken}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const payload = (await response.json()) as XUserMeResponse;
+    const id = payload.data?.id;
+    if (!response.ok || !id) {
+      throw new Error(
+        `X credential check returned HTTP ${response.status}: ${JSON.stringify(payload).slice(0, 500)}`,
+      );
+    }
+    return {
+      id,
+      ...(payload.data?.username ? { username: payload.data.username } : {}),
+      dryRun: false,
+    };
   }
 
   async publish(trade: TradePost): Promise<PublishResult> {

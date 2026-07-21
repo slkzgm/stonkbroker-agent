@@ -1,5 +1,5 @@
-import { getAddress, isAddress } from "viem";
-import { CHAIN_ID, UNISWAP_API_URL } from "./constants.js";
+import { getAddress, isAddress, isHex } from "viem";
+import { CHAIN_ID, UNISWAP_API_URL, UNISWAP_UNIVERSAL_ROUTER_VERSION, } from "./constants.js";
 export class UniswapClient {
     apiKey;
     baseUrl;
@@ -23,13 +23,7 @@ export class UniswapClient {
             routingPreference: "BEST_PRICE",
             protocols: ["V2", "V3", "V4"],
         });
-        if (response.routing !== "CLASSIC") {
-            throw new Error(`Expected a CLASSIC Uniswap route, received ${response.routing}`);
-        }
-        if (response.permitData != null) {
-            throw new Error("Uniswap returned Permit2 data even though direct approvals are enabled");
-        }
-        return response;
+        return validateQuoteEnvelope(response, input);
     }
     async buildSwap(quote) {
         const response = await this.post("/swap", {
@@ -38,22 +32,10 @@ export class UniswapClient {
             simulateTransaction: false,
             deadline: Math.floor(Date.now() / 1_000) + 120,
         });
+        if (!response || typeof response !== "object" || !response.swap) {
+            throw new Error("Uniswap swap response did not include a transaction");
+        }
         return normalizeTransaction(response.swap);
-    }
-    async checkApproval(input) {
-        const response = await this.post("/check_approval", {
-            walletAddress: input.wallet,
-            token: input.token,
-            tokenOut: input.tokenOut,
-            tokenOutChainId: CHAIN_ID,
-            amount: input.amount.toString(),
-            chainId: CHAIN_ID,
-        });
-        return {
-            ...response,
-            approval: response.approval ? normalizeTransaction(response.approval) : null,
-            cancel: response.cancel ? normalizeTransaction(response.cancel) : null,
-        };
     }
     async post(path, body) {
         const response = await this.fetcher(`${this.baseUrl}${path}`, {
@@ -62,7 +44,7 @@ export class UniswapClient {
                 accept: "application/json",
                 "content-type": "application/json",
                 "x-api-key": this.apiKey,
-                "x-universal-router-version": "2.0",
+                "x-universal-router-version": UNISWAP_UNIVERSAL_ROUTER_VERSION,
                 "x-permit2-disabled": "true",
             },
             body: JSON.stringify(body),
@@ -85,18 +67,47 @@ export class UniswapClient {
         return payload;
     }
 }
+export function validateQuoteEnvelope(envelope, expected) {
+    if (!envelope || typeof envelope !== "object") {
+        throw new Error("Uniswap returned an invalid quote response");
+    }
+    if (!envelope.requestId || typeof envelope.requestId !== "string") {
+        throw new Error("Uniswap quote did not include a request ID");
+    }
+    if (envelope.routing !== "CLASSIC") {
+        throw new Error(`Expected a CLASSIC Uniswap route, received ${envelope.routing}`);
+    }
+    if (envelope.permitData != null) {
+        throw new Error("Uniswap returned Permit2 data even though direct approvals are enabled");
+    }
+    const quotedInput = envelope.quote?.input;
+    const quotedOutput = envelope.quote?.output;
+    if (!quotedInput || !quotedOutput) {
+        throw new Error("Uniswap quote is missing its input or output");
+    }
+    if (!quotedInput.amount || !/^\d+$/.test(quotedInput.amount)) {
+        throw new Error("Uniswap quote did not include a valid input amount");
+    }
+    if (BigInt(quotedInput.amount) !== expected.amount) {
+        throw new Error("Uniswap quote input amount does not match the request");
+    }
+    assertMatchingAddress(quotedInput.token, expected.tokenIn, "input token");
+    if (!quotedOutput.amount || !/^\d+$/.test(quotedOutput.amount) || BigInt(quotedOutput.amount) <= 0n) {
+        throw new Error("Uniswap quote did not include a valid output amount");
+    }
+    assertMatchingAddress(quotedOutput.token, expected.tokenOut, "output token");
+    assertMatchingAddress(quotedOutput.recipient, expected.swapper, "output recipient");
+    return envelope;
+}
 function normalizeTransaction(transaction) {
     if (!isAddress(transaction.to) || !isAddress(transaction.from)) {
         throw new Error("Uniswap returned an invalid transaction address");
     }
-    if (!transaction.data || transaction.data === "0x") {
-        throw new Error("Uniswap returned empty transaction calldata");
+    if (!transaction.data || transaction.data === "0x" || !isHex(transaction.data, { strict: true })) {
+        throw new Error("Uniswap returned invalid or empty transaction calldata");
     }
     if (transaction.chainId !== CHAIN_ID) {
         throw new Error(`Uniswap transaction targets chain ${transaction.chainId}`);
-    }
-    if (!/^0x[0-9a-fA-F]+$/.test(transaction.data)) {
-        throw new Error("Uniswap returned invalid transaction calldata");
     }
     try {
         if (BigInt(transaction.value) < 0n)
@@ -111,5 +122,10 @@ function normalizeTransaction(transaction) {
         from: getAddress(transaction.from),
         data: transaction.data,
     };
+}
+function assertMatchingAddress(actual, expected, field) {
+    if (!actual || !isAddress(actual) || getAddress(actual) !== getAddress(expected)) {
+        throw new Error(`Uniswap quote ${field} does not match the request`);
+    }
 }
 //# sourceMappingURL=uniswap.js.map

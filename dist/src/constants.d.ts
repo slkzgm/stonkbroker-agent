@@ -6,6 +6,10 @@ export declare const BLOCKSCOUT_API_URL = "https://robinhoodchain.blockscout.com
 export declare const ROBINHOOD_ASSETS_URL = "https://api.robinhood.com/rhj/assets";
 export declare const UNISWAP_API_URL = "https://trade-api.gateway.uniswap.org/v1";
 export declare const X_API_URL = "https://api.x.com/2/tweets";
+export declare const X_API_USER_ME_URL = "https://api.x.com/2/users/me";
+export declare const UNISWAP_UNIVERSAL_ROUTER_VERSION = "2.1.1";
+export declare const UNISWAP_UNIVERSAL_ROUTER: `0x${string}`;
+export declare const UNISWAP_SWAP_PROXY: `0x${string}`;
 export declare const DEFAULT_STONKBROKER_NFT: `0x${string}`;
 export declare const KNOWN_STONKBROKER_ACCOUNT_IMPLEMENTATION: `0x${string}`;
 export declare const robinhoodChain: {

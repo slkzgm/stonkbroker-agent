@@ -116,7 +116,7 @@ following values in a local `.env` file or your MCP client's private environment
 BROKER_TOKEN_ID=<your broker id>
 OWNER_PRIVATE_KEY=0x...
 ALLOW_LIVE_TRADING=true
-X_USER_ACCESS_TOKEN=<OAuth user token with tweet.write>
+X_USER_ACCESS_TOKEN=<OAuth user token with tweet.read tweet.write users.read>
 REQUIRE_X_POST=true
 X_DRY_RUN=false
 ```
@@ -166,12 +166,14 @@ Suggested demo conversation:
 ## Safety properties
 
 - Live trading is off by default.
-- A quote cannot spend more than `MAX_TRADE_BPS` of the current input-token balance (25% by default).
+- A quote cannot spend more than `MAX_TRADE_BPS` of the current input-token balance (5% by default).
 - Only canonical contracts returned by Robinhood's live registry can be selected.
 - Quotes are forced to immediate Uniswap AMM routes; intent orders are not used.
-- Permit2 is disabled. Approval calldata must target the input token, approve the exact Uniswap swap target, and never exceed the quoted input amount.
+- Permit2 is disabled. Any mismatched existing allowance is first cleared, then set to the exact input amount for Uniswap's deterministic Swap Proxy.
 - The NFT owner, predicted TBA, deployed TBA, implementation, TBA owner, token contract, and token ID are checked before trading.
-- Swap calldata must identify the TBA as `from`, target chain `4663`, and survive an `eth_call` simulation through `executeCall`.
+- Quote input, output, amount, and recipient must exactly match the request.
+- Swap calldata must identify the TBA as `from`, target chain `4663`, call only the official Swap Proxy and Universal Router `2.1.1`, bind the exact input token and amount, send zero native value, use a short deadline, and survive an `eth_call` simulation through `executeCall`.
+- V2, V3, nested, and V4 router plans are decoded: Permit2-funded, allow-revert, exact-output, partial-output, and unrelated commands are rejected, and the complete output must be addressed explicitly to the TBA rather than the Swap Proxy.
 - A quote expires after 30 seconds and is removed after one execution attempt.
 - Actual post amounts come from confirmed onchain balance deltas, not the pre-trade quote.
 - Confirmed trades enter a mode-`0600` durable outbox before the first X request. Failed posts are retried every minute and through `retry_x_posts`.
@@ -186,7 +188,7 @@ pnpm run build
 pnpm run verify:chain
 ```
 
-`verify:chain` performs live read-only checks against chain `4663`, including the NFT/TBA linkage and canonical stock-token balances. The test suite covers canonical-asset filtering, calldata safety, X post formatting, and outbox persistence.
+`verify:chain` performs live read-only checks against chain `4663`, including the NFT/TBA linkage, canonical stock-token balances, Universal Router `2.1.1`, and Swap Proxy deployments. The test suite covers canonical-asset filtering, quote binding, decoded V2/V3/V4 calldata safety, complete trade orchestration, X post formatting, and outbox persistence.
 
 ## Robinhood Trading MCP and onchain execution
 
@@ -212,13 +214,15 @@ MCP alone is not an execution interface for the TBA. See the
 
 ## External prerequisites for a public bounty demo
 
-The repository is complete without embedding credentials, but a public live proof still requires:
+The implementation and test harness contain no embedded credentials. The bounty
+must not be claimed as verified until a public live proof provides:
 
 1. A StonkBroker controlled by the demo signer.
 2. Input stock-token balance in its TBA.
 3. Enough ETH in the owner EOA for Robinhood Chain gas.
 4. A Uniswap Developer API key.
-5. An X developer app and OAuth user access token with `tweet.write`.
+5. An X developer app and OAuth user access token with `tweet.read`,
+   `tweet.write`, and `users.read`.
 
 Stock tokens and automated trading involve financial risk. Use a tiny amount for the proof transaction.
 

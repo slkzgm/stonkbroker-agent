@@ -1,22 +1,32 @@
 import { randomUUID } from "node:crypto";
-import { createWalletClient, decodeFunctionData, formatUnits, getAddress, http, parseUnits, } from "viem";
+import { createWalletClient, decodeAbiParameters, decodeFunctionData, encodeFunctionData, formatUnits, getAddress, http, parseAbiParameters, parseUnits, } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { erc20Abi, stonkBrokerAccountAbi } from "./abis.js";
-import { BLOCKSCOUT_URL, CHAIN_ID, robinhoodChain } from "./constants.js";
+import { erc20Abi, stonkBrokerAccountAbi, uniswapSwapProxyAbi } from "./abis.js";
+import { BLOCKSCOUT_URL, CHAIN_ID, UNISWAP_SWAP_PROXY, UNISWAP_UNIVERSAL_ROUTER, robinhoodChain, } from "./constants.js";
 import { TradeOutbox } from "./outbox.js";
 import { XPublisher } from "./x.js";
 const QUOTE_TTL_MS = 30_000;
+const MAX_SWAP_DEADLINE_LEEWAY_SECONDS = 180n;
+const ROUTER_ADDRESS_THIS = getAddress("0x0000000000000000000000000000000000000002");
+const v3ExactInputParameters = parseAbiParameters("address recipient, uint256 amountIn, uint256 amountOutMin, bytes path, bool payerIsUser, uint256[] minHopPriceX36");
+const v2ExactInputParameters = parseAbiParameters("address recipient, uint256 amountIn, uint256 amountOutMin, address[] path, bool payerIsUser, uint256[] minHopPriceX36");
+const paymentParameters = parseAbiParameters("address token, address recipient, uint256 amount");
+const commandsAndInputsParameters = parseAbiParameters("bytes commands, bytes[] inputs");
+const v4SettleParameters = parseAbiParameters("address currency, uint256 amount, bool payerIsUser");
+const v4TakeParameters = parseAbiParameters("address currency, address recipient, uint256 amount");
 export class StonkTrader {
     config;
     broker;
     uniswap;
+    transactionExecutor;
     quotes = new Map();
     outbox;
     publisher;
-    constructor(config, broker, uniswap, outbox, publisher) {
+    constructor(config, broker, uniswap, outbox, publisher, transactionExecutor) {
         this.config = config;
         this.broker = broker;
         this.uniswap = uniswap;
+        this.transactionExecutor = transactionExecutor;
         this.outbox = outbox ?? new TradeOutbox(config.outboxPath);
         this.publisher = publisher ?? new XPublisher(config.xUserAccessToken, config.xDryRun);
     }
@@ -26,6 +36,7 @@ export class StonkTrader {
             this.broker.identity(input.tokenId),
             this.broker.assets.resolve(input.tokenIn),
             this.broker.assets.resolve(input.tokenOut),
+            this.broker.assertInfrastructure(),
         ]);
         if (tokenIn.address === tokenOut.address) {
             throw new Error("Input and output tokens must differ");
@@ -88,6 +99,9 @@ export class StonkTrader {
             this.quotes.delete(quoteId);
             throw new Error("Quote expired; request a fresh quote");
         }
+        // One execution attempt per quote prevents a timeout or concurrent retry
+        // from broadcasting the same irreversible swap twice.
+        this.quotes.delete(quoteId);
         const identity = await this.broker.identity(quote.tokenId);
         if (identity.wallet !== quote.wallet || identity.owner !== quote.owner) {
             throw new Error("StonkBroker ownership changed after the quote was created");
@@ -97,19 +111,23 @@ export class StonkTrader {
         if (getAddress(account.address) !== identity.owner) {
             throw new Error(`OWNER_PRIVATE_KEY signs as ${account.address}, but StonkBroker #${quote.tokenId} is owned by ${identity.owner}`);
         }
+        const ownerGasBalance = await this.broker.nativeBalance(identity.owner);
+        if (ownerGasBalance === 0n) {
+            throw new Error("StonkBroker owner has no ETH on Robinhood Chain to pay transaction gas");
+        }
+        if (this.config.requireXPost)
+            await this.publisher.verifyCredentials();
         const uniswap = this.requireUniswap();
-        const [swap, approvalPlan, inputBalanceBefore, outputBalanceBefore] = await Promise.all([
+        const [swap, inputBalanceBefore, outputBalanceBefore, currentAllowance] = await Promise.all([
             uniswap.buildSwap(quote.envelope),
-            uniswap.checkApproval({
-                wallet: quote.wallet,
-                token: quote.tokenIn.address,
-                tokenOut: quote.tokenOut.address,
-                amount: quote.amountIn,
-            }),
             this.broker.tokenBalance(quote.wallet, quote.tokenIn.address),
             this.broker.tokenBalance(quote.wallet, quote.tokenOut.address),
+            this.broker.tokenAllowance(quote.wallet, quote.tokenIn.address, UNISWAP_SWAP_PROXY),
         ]);
-        validateSwapTransaction(swap, quote.wallet);
+        validateSwapTransaction(swap, quote.wallet, quote.tokenIn.address, quote.tokenOut.address, quote.amountIn);
+        if (Date.now() > quote.expiresAt) {
+            throw new Error("Quote expired during preflight; request a fresh quote");
+        }
         if (quote.amountIn > inputBalanceBefore) {
             throw new Error("Input token balance fell below the quoted amount");
         }
@@ -117,19 +135,17 @@ export class StonkTrader {
             inputBalanceBefore * BigInt(this.config.maxTradeBps)) {
             throw new Error("Trade now exceeds MAX_TRADE_BPS after a balance change");
         }
-        const walletClient = createWalletClient({
-            account,
-            chain: robinhoodChain,
-            transport: http(this.config.rpcUrl),
-        });
         const approvalTxHashes = [];
-        for (const transaction of [approvalPlan.cancel, approvalPlan.approval]) {
-            if (!transaction)
-                continue;
-            validateApprovalTransaction(transaction, quote.wallet, quote.tokenIn.address, swap.to, quote.amountIn);
-            approvalTxHashes.push(await this.executeTbaCall(transaction, quote.wallet, walletClient, account.address));
+        for (const amount of requiredApprovalAmounts(currentAllowance, quote.amountIn)) {
+            const transaction = approvalTransaction(quote.wallet, quote.tokenIn.address, UNISWAP_SWAP_PROXY, amount);
+            validateApprovalTransaction(transaction, quote.wallet, quote.tokenIn.address, UNISWAP_SWAP_PROXY, amount);
+            approvalTxHashes.push(await this.executeTbaCall(transaction, quote.wallet, account.address));
         }
-        const txHash = await this.executeTbaCall(swap, quote.wallet, walletClient, account.address);
+        const finalAllowance = await this.broker.tokenAllowance(quote.wallet, quote.tokenIn.address, UNISWAP_SWAP_PROXY);
+        if (finalAllowance !== quote.amountIn) {
+            throw new Error(`Input-token allowance is ${finalAllowance}, expected exactly ${quote.amountIn}`);
+        }
+        const txHash = await this.executeTbaCall(swap, quote.wallet, account.address);
         const [inputBalanceAfter, outputBalanceAfter] = await Promise.all([
             this.broker.tokenBalance(quote.wallet, quote.tokenIn.address),
             this.broker.tokenBalance(quote.wallet, quote.tokenOut.address),
@@ -154,7 +170,6 @@ export class StonkTrader {
             attempts: 0,
         };
         await this.outbox.enqueue(trade);
-        this.quotes.delete(quoteId);
         try {
             const result = await this.publisher.publish(trade);
             if (result.dryRun)
@@ -170,7 +185,16 @@ export class StonkTrader {
     async flushPendingPosts() {
         return this.outbox.flush(this.publisher);
     }
-    async executeTbaCall(transaction, wallet, walletClient, owner) {
+    async executeTbaCall(transaction, wallet, owner) {
+        if (this.transactionExecutor) {
+            return this.transactionExecutor(transaction, wallet, owner);
+        }
+        const account = privateKeyToAccount(this.config.ownerPrivateKey);
+        const walletClient = createWalletClient({
+            account,
+            chain: robinhoodChain,
+            transport: http(this.config.rpcUrl),
+        });
         const value = BigInt(transaction.value);
         const { request } = await this.broker.publicClient.simulateContract({
             account: owner,
@@ -212,16 +236,196 @@ export class StonkTrader {
         }
     }
 }
-export function validateSwapTransaction(transaction, wallet) {
+export function validateSwapTransaction(transaction, wallet, tokenIn, tokenOut, exactAmountIn, nowSeconds = BigInt(Math.floor(Date.now() / 1_000))) {
     if (transaction.chainId !== CHAIN_ID)
         throw new Error("Swap targets the wrong chain");
     if (getAddress(transaction.from) !== getAddress(wallet)) {
         throw new Error("Swap sender is not the StonkBroker TBA");
     }
+    if (getAddress(transaction.to) !== UNISWAP_SWAP_PROXY) {
+        throw new Error("Swap target is not the official Uniswap Swap Proxy");
+    }
+    if (BigInt(transaction.value) !== 0n) {
+        throw new Error("Stock-token swap unexpectedly sends native value");
+    }
     if (transaction.data === "0x")
         throw new Error("Swap calldata is empty");
+    let decoded;
+    try {
+        decoded = decodeFunctionData({ abi: uniswapSwapProxyAbi, data: transaction.data });
+    }
+    catch {
+        throw new Error("Swap calldata is not a supported Swap Proxy call");
+    }
+    if (decoded.functionName !== "execute") {
+        throw new Error("Swap calldata does not call Swap Proxy execute()");
+    }
+    const [router, token, amount, commands, inputs, deadline] = decoded.args;
+    if (getAddress(router) !== UNISWAP_UNIVERSAL_ROUTER) {
+        throw new Error("Swap calldata does not use Robinhood Chain Universal Router 2.1.1");
+    }
+    if (getAddress(token) !== getAddress(tokenIn)) {
+        throw new Error("Swap calldata input token does not match the quote");
+    }
+    if (amount !== exactAmountIn) {
+        throw new Error("Swap calldata input amount does not match the quote");
+    }
+    if (commands === "0x" || inputs.length === 0) {
+        throw new Error("Swap Proxy route is empty");
+    }
+    if (!validateRouterPlan(commands, inputs, wallet, tokenOut)) {
+        throw new Error("Universal Router plan does not deliver the output token to the TBA");
+    }
+    if (deadline <= nowSeconds || deadline > nowSeconds + MAX_SWAP_DEADLINE_LEEWAY_SECONDS) {
+        throw new Error("Swap deadline is expired or unexpectedly far in the future");
+    }
 }
-export function validateApprovalTransaction(transaction, wallet, tokenIn, swapTarget, maxApprovalAmount) {
+function validateRouterPlan(commands, inputs, wallet, tokenOut) {
+    const state = { delivered: false, routerHoldsOutput: false };
+    validateRouterCommands(commands, inputs, wallet, tokenOut, state);
+    return state.delivered && !state.routerHoldsOutput;
+}
+function validateRouterCommands(commands, inputs, wallet, tokenOut, state) {
+    const commandBytes = hexBytes(commands);
+    if (commandBytes.length !== inputs.length) {
+        throw new Error("Universal Router commands and inputs have different lengths");
+    }
+    for (let index = 0; index < commandBytes.length; index += 1) {
+        const commandByte = commandBytes[index];
+        if ((commandByte & 0x80) !== 0) {
+            throw new Error("Universal Router allow-revert commands are not accepted");
+        }
+        const command = commandByte & 0x7f;
+        const input = inputs[index];
+        try {
+            if (command === 0x00) {
+                const [recipient, , , path, payerIsUser] = decodeAbiParameters(v3ExactInputParameters, input);
+                assertSafeRecipient(recipient, wallet);
+                if (payerIsUser)
+                    throw new Error("V3 swap asks the proxy to pay through Permit2");
+                if (getAddress(v3OutputToken(path)) === getAddress(tokenOut)) {
+                    markOutputRecipient(recipient, wallet, state);
+                }
+            }
+            else if (command === 0x08) {
+                const [recipient, , , path, payerIsUser] = decodeAbiParameters(v2ExactInputParameters, input);
+                assertSafeRecipient(recipient, wallet);
+                if (payerIsUser)
+                    throw new Error("V2 swap asks the proxy to pay through Permit2");
+                const routeOutput = path.at(-1);
+                if (!routeOutput)
+                    throw new Error("V2 swap path is empty");
+                if (getAddress(routeOutput) === getAddress(tokenOut)) {
+                    markOutputRecipient(recipient, wallet, state);
+                }
+            }
+            else if (command === 0x04) {
+                const [token, recipient] = decodeAbiParameters(paymentParameters, input);
+                assertSafeRecipient(recipient, wallet);
+                if (getAddress(token) === getAddress(tokenOut)) {
+                    if (isWallet(recipient, wallet)) {
+                        state.delivered = true;
+                        state.routerHoldsOutput = false;
+                    }
+                    else {
+                        state.routerHoldsOutput = true;
+                    }
+                }
+            }
+            else if (command === 0x0e) {
+                // BALANCE_CHECK_ERC20 is read-only and has no recipient.
+                decodeAbiParameters(paymentParameters, input);
+            }
+            else if (command === 0x10) {
+                validateV4Plan(input, wallet, tokenOut, state);
+            }
+            else if (command === 0x21) {
+                const [subcommands, subinputs] = decodeAbiParameters(commandsAndInputsParameters, input);
+                validateRouterCommands(subcommands, subinputs, wallet, tokenOut, state);
+            }
+            else {
+                throw new Error(`Universal Router command 0x${command.toString(16)} is not allowed`);
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`Invalid Universal Router command at index ${index}: ${message}`);
+        }
+    }
+}
+function validateV4Plan(input, wallet, tokenOut, state) {
+    const [actions, parameters] = decodeAbiParameters(commandsAndInputsParameters, input);
+    const actionBytes = hexBytes(actions);
+    if (actionBytes.length !== parameters.length) {
+        throw new Error("Uniswap V4 actions and parameters have different lengths");
+    }
+    for (let index = 0; index < actionBytes.length; index += 1) {
+        const action = actionBytes[index];
+        const parametersForAction = parameters[index];
+        if (action === 0x06 || action === 0x07) {
+            // Exact-input V4 swap parameters are fully decoded by the deployed router.
+            // Their payment and output destinations are handled by SETTLE/TAKE actions below.
+            if (parametersForAction === "0x")
+                throw new Error("Uniswap V4 swap parameters are empty");
+        }
+        else if (action === 0x0b) {
+            const [, , payerIsUser] = decodeAbiParameters(v4SettleParameters, parametersForAction);
+            if (payerIsUser)
+                throw new Error("V4 settlement asks the proxy to pay through Permit2");
+        }
+        else if (action === 0x0c) {
+            // SETTLE_ALL draws the currency already held by the router.
+            decodeAbiParameters(parseAbiParameters("address currency, uint256 maxAmount"), parametersForAction);
+        }
+        else if (action === 0x0e) {
+            const [currency, recipient, amount] = decodeAbiParameters(v4TakeParameters, parametersForAction);
+            assertSafeRecipient(recipient, wallet);
+            if (getAddress(currency) === getAddress(tokenOut) && isWallet(recipient, wallet)) {
+                if (amount !== 0n) {
+                    throw new Error("V4 output TAKE does not withdraw the complete open delta");
+                }
+                state.delivered = true;
+            }
+            else if (getAddress(currency) === getAddress(tokenOut)) {
+                if (amount !== 0n) {
+                    throw new Error("V4 output TAKE does not withdraw the complete open delta");
+                }
+                state.routerHoldsOutput = true;
+            }
+        }
+        else {
+            throw new Error(`Uniswap V4 action 0x${action.toString(16)} is not allowed`);
+        }
+    }
+}
+function markOutputRecipient(recipient, wallet, state) {
+    if (isWallet(recipient, wallet))
+        state.delivered = true;
+    else
+        state.routerHoldsOutput = true;
+}
+function assertSafeRecipient(recipient, wallet) {
+    if (!isWallet(recipient, wallet) && getAddress(recipient) !== ROUTER_ADDRESS_THIS) {
+        throw new Error("Swap output recipient is neither the TBA nor the router itself");
+    }
+}
+function isWallet(recipient, wallet) {
+    return getAddress(recipient) === getAddress(wallet);
+}
+function v3OutputToken(path) {
+    const raw = path.slice(2);
+    if (raw.length < 86 || (raw.length - 40) % 46 !== 0) {
+        throw new Error("V3 swap path is malformed");
+    }
+    return getAddress(`0x${raw.slice(-40)}`);
+}
+function hexBytes(value) {
+    const raw = value.slice(2);
+    if (raw.length === 0 || raw.length % 2 !== 0)
+        throw new Error("Command bytes are malformed");
+    return raw.match(/.{2}/g).map((byte) => Number.parseInt(byte, 16));
+}
+export function validateApprovalTransaction(transaction, wallet, tokenIn, swapTarget, exactApprovalAmount) {
     if (transaction.chainId !== CHAIN_ID)
         throw new Error("Approval targets the wrong chain");
     if (getAddress(transaction.from) !== getAddress(wallet)) {
@@ -239,8 +443,26 @@ export function validateApprovalTransaction(transaction, wallet, tokenIn, swapTa
     if (getAddress(spender) !== getAddress(swapTarget)) {
         throw new Error("Approval spender does not match the swap target");
     }
-    if (amount > maxApprovalAmount) {
-        throw new Error("Approval amount exceeds the exact quoted input amount");
+    if (amount !== exactApprovalAmount) {
+        throw new Error("Approval amount is not the exact expected amount");
     }
+}
+export function requiredApprovalAmounts(currentAllowance, exactAmountIn) {
+    if (currentAllowance === exactAmountIn)
+        return [];
+    return currentAllowance === 0n ? [exactAmountIn] : [0n, exactAmountIn];
+}
+function approvalTransaction(wallet, token, spender, amount) {
+    return {
+        from: wallet,
+        to: token,
+        chainId: CHAIN_ID,
+        value: "0",
+        data: encodeFunctionData({
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [spender, amount],
+        }),
+    };
 }
 //# sourceMappingURL=trader.js.map

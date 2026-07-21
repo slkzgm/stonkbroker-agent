@@ -5,6 +5,7 @@ import { formatUnits } from "viem";
 import * as z from "zod/v4";
 import { BrokerService } from "./broker.js";
 import { loadConfig, resolveTokenId } from "./config.js";
+import { UNISWAP_SWAP_PROXY, UNISWAP_UNIVERSAL_ROUTER, UNISWAP_UNIVERSAL_ROUTER_VERSION, } from "./constants.js";
 import { StonkTrader } from "./trader.js";
 import { UniswapClient } from "./uniswap.js";
 const config = loadConfig();
@@ -13,14 +14,14 @@ const uniswap = config.uniswapApiKey ? new UniswapClient(config.uniswapApiKey) :
 const trader = new StonkTrader(config, broker, uniswap);
 const server = new McpServer({
     name: "stonkbroker-agent",
-    version: "0.1.1",
+    version: "0.1.2",
 });
 server.registerTool("system_health", {
     description: "Check Robinhood Chain connectivity and whether quote, signing, live trading, and X posting credentials are configured. Never returns secrets.",
     inputSchema: {},
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
 }, async () => toolResult(async () => {
-    await broker.assertNetwork();
+    await broker.assertInfrastructure();
     return {
         chainId: 4663,
         rpcConnected: true,
@@ -33,6 +34,9 @@ server.registerTool("system_health", {
         xDryRun: config.xDryRun,
         requireXPost: config.requireXPost,
         maxTradeBps: config.maxTradeBps,
+        uniswapUniversalRouterVersion: UNISWAP_UNIVERSAL_ROUTER_VERSION,
+        uniswapUniversalRouter: UNISWAP_UNIVERSAL_ROUTER,
+        uniswapSwapProxy: UNISWAP_SWAP_PROXY,
     };
 }));
 server.registerTool("broker_status", {

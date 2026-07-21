@@ -1,4 +1,4 @@
-import { type Address } from "viem";
+import { type Address, type Hash } from "viem";
 import { BrokerService } from "./broker.js";
 import type { AppConfig } from "./config.js";
 import { TradeOutbox } from "./outbox.js";
@@ -9,10 +9,11 @@ export declare class StonkTrader {
     readonly config: AppConfig;
     readonly broker: BrokerService;
     private readonly uniswap?;
+    private readonly transactionExecutor?;
     private readonly quotes;
     private readonly outbox;
     private readonly publisher;
-    constructor(config: AppConfig, broker: BrokerService, uniswap?: UniswapClient | undefined, outbox?: TradeOutbox, publisher?: XPublisher);
+    constructor(config: AppConfig, broker: BrokerService, uniswap?: UniswapClient | undefined, outbox?: TradeOutbox, publisher?: XPublisher, transactionExecutor?: ((transaction: TransactionRequest, wallet: Address, owner: Address) => Promise<Hash>) | undefined);
     quoteTrade(input: {
         tokenId: bigint;
         tokenIn: string;
@@ -35,5 +36,6 @@ export declare class StonkTrader {
     private assertLiveTradingReady;
     private pruneQuotes;
 }
-export declare function validateSwapTransaction(transaction: TransactionRequest, wallet: Address): void;
-export declare function validateApprovalTransaction(transaction: TransactionRequest, wallet: Address, tokenIn: Address, swapTarget: Address, maxApprovalAmount: bigint): void;
+export declare function validateSwapTransaction(transaction: TransactionRequest, wallet: Address, tokenIn: Address, tokenOut: Address, exactAmountIn: bigint, nowSeconds?: bigint): void;
+export declare function validateApprovalTransaction(transaction: TransactionRequest, wallet: Address, tokenIn: Address, swapTarget: Address, exactApprovalAmount: bigint): void;
+export declare function requiredApprovalAmounts(currentAllowance: bigint, exactAmountIn: bigint): bigint[];

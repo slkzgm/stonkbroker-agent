@@ -159,4 +159,44 @@ export declare const erc20Abi: readonly [{
         readonly name: "";
         readonly type: "bool";
     }];
+}, {
+    readonly type: "function";
+    readonly name: "allowance";
+    readonly stateMutability: "view";
+    readonly inputs: readonly [{
+        readonly name: "owner";
+        readonly type: "address";
+    }, {
+        readonly name: "spender";
+        readonly type: "address";
+    }];
+    readonly outputs: readonly [{
+        readonly name: "";
+        readonly type: "uint256";
+    }];
+}];
+export declare const uniswapSwapProxyAbi: readonly [{
+    readonly type: "function";
+    readonly name: "execute";
+    readonly stateMutability: "nonpayable";
+    readonly inputs: readonly [{
+        readonly name: "router";
+        readonly type: "address";
+    }, {
+        readonly name: "token";
+        readonly type: "address";
+    }, {
+        readonly name: "amount";
+        readonly type: "uint256";
+    }, {
+        readonly name: "commands";
+        readonly type: "bytes";
+    }, {
+        readonly name: "inputs";
+        readonly type: "bytes[]";
+    }, {
+        readonly name: "deadline";
+        readonly type: "uint256";
+    }];
+    readonly outputs: readonly [];
 }];

@@ -32,7 +32,7 @@ const envSchema = z.object({
     UNISWAP_API_KEY: z.string().min(1).optional(),
     OWNER_PRIVATE_KEY: optionalPrivateKey,
     ALLOW_LIVE_TRADING: booleanFromEnv.default(false),
-    MAX_TRADE_BPS: z.coerce.number().int().min(1).max(10_000).default(2_500),
+    MAX_TRADE_BPS: z.coerce.number().int().min(1).max(10_000).default(500),
     X_USER_ACCESS_TOKEN: z.string().min(1).optional(),
     REQUIRE_X_POST: booleanFromEnv.default(true),
     X_DRY_RUN: booleanFromEnv.default(false),

@@ -7,6 +7,27 @@ and releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-21
+
+### Fixed
+
+- Pin Robinhood Chain to its supported Uniswap Universal Router `2.1.1`
+  instead of the unsupported `2.0` deployment.
+- Replace API-generated approvals with decoded, exact local approvals to the
+  deterministic Uniswap Swap Proxy.
+
+### Security
+
+- Bind quote responses to the requested tokens, amount, and TBA recipient.
+- Decode Swap Proxy calldata and enforce the official proxy/router, exact input
+  token and amount, zero native value, non-empty route, and short deadline.
+- Decode V2, V3, nested, and V4 router plans; reject partial-failure and
+  incompatible commands; and require the complete output to target the TBA.
+- Consume every quote before its first execution attempt to prevent duplicate
+  broadcasts after timeouts or concurrent calls.
+- Reduce the default per-trade balance cap from 25% to 5% and verify X user
+  credentials before submitting any onchain transaction.
+
 ## [0.1.1] - 2026-07-21
 
 ### Fixed
@@ -26,6 +47,7 @@ and releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checks, and durable X posting.
 - CLI, read-only chain verification, automated tests, and public documentation.
 
-[Unreleased]: https://github.com/slkzgm/stonkbroker-agent/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/slkzgm/stonkbroker-agent/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/slkzgm/stonkbroker-agent/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/slkzgm/stonkbroker-agent/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/slkzgm/stonkbroker-agent/releases/tag/v0.1.0

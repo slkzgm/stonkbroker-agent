@@ -8,6 +8,7 @@ export declare class BrokerService {
     readonly publicClient: PublicClient;
     constructor(config: AppConfig, assets?: RobinhoodAssetRegistry, publicClient?: PublicClient);
     assertNetwork(): Promise<void>;
+    assertInfrastructure(): Promise<void>;
     identity(tokenId: bigint): Promise<BrokerIdentity>;
     portfolio(tokenId: bigint): Promise<{
         identity: BrokerIdentity;
@@ -15,5 +16,7 @@ export declare class BrokerService {
         positions: PortfolioPosition[];
     }>;
     tokenBalance(wallet: Address, token: Address): Promise<bigint>;
+    nativeBalance(wallet: Address): Promise<bigint>;
     tokenDecimals(token: Address): Promise<number>;
+    tokenAllowance(owner: Address, token: Address, spender: Address): Promise<bigint>;
 }

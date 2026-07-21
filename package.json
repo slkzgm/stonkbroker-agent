@@ -1,6 +1,6 @@
 {
   "name": "stonkbroker-agent",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "MCP agent for trading Robinhood stock tokens from a StonkBroker ERC-6551 wallet and posting trades to X.",
   "license": "MIT",

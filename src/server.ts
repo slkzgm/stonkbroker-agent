@@ -7,6 +7,11 @@ import * as z from "zod/v4";
 
 import { BrokerService } from "./broker.js";
 import { loadConfig, resolveTokenId } from "./config.js";
+import {
+  UNISWAP_SWAP_PROXY,
+  UNISWAP_UNIVERSAL_ROUTER,
+  UNISWAP_UNIVERSAL_ROUTER_VERSION,
+} from "./constants.js";
 import { StonkTrader } from "./trader.js";
 import { UniswapClient } from "./uniswap.js";
 
@@ -17,7 +22,7 @@ const trader = new StonkTrader(config, broker, uniswap);
 
 const server = new McpServer({
   name: "stonkbroker-agent",
-  version: "0.1.1",
+  version: "0.1.2",
 });
 
 server.registerTool(
@@ -30,7 +35,7 @@ server.registerTool(
   },
   async () =>
     toolResult(async () => {
-      await broker.assertNetwork();
+      await broker.assertInfrastructure();
       return {
         chainId: 4663,
         rpcConnected: true,
@@ -43,6 +48,9 @@ server.registerTool(
         xDryRun: config.xDryRun,
         requireXPost: config.requireXPost,
         maxTradeBps: config.maxTradeBps,
+        uniswapUniversalRouterVersion: UNISWAP_UNIVERSAL_ROUTER_VERSION,
+        uniswapUniversalRouter: UNISWAP_UNIVERSAL_ROUTER,
+        uniswapSwapProxy: UNISWAP_SWAP_PROXY,
       };
     }),
 );
