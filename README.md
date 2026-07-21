@@ -123,6 +123,36 @@ X_DRY_RUN=false
 
 The signer must be the current onchain owner of the selected StonkBroker. It also needs a small amount of ETH on Robinhood Chain for gas. Never put a key in source code or an MCP prompt.
 
+## Capture a bounty proof
+
+The packaged proof runner connects to the real MCP server as a client and saves
+a reviewable, mode-`0600` JSON artifact. Its inspection mode is read-only:
+
+```bash
+pnpm run build
+pnpm run proof -- --inspect-only --token-id 1
+```
+
+With a controlled StonkBroker and the live variables above configured, run a
+tiny proof trade:
+
+```bash
+pnpm run proof -- --token-id 123 --in AAPL --out NVDA --amount 0.001 --slippage 0.5
+```
+
+The runner records the MCP tool list, system health, verified TBA, quote,
+confirmed transaction, and X result in `.stonkagent/bounty-proof.json`. It
+prints the quote and requires the operator to type the literal `EXECUTE` before
+anything is signed. Credentials are inherited by the child MCP process but are
+never printed or written to the evidence file.
+
+It can also run directly from the public release:
+
+```bash
+npx --yes --package=github:slkzgm/stonkbroker-agent#v0.2.0 \
+  stonkbroker-proof --inspect-only --token-id 1
+```
+
 ## Connect an agent
 
 For a local clone, build first and configure any MCP client to spawn the server
@@ -188,7 +218,7 @@ pnpm run build
 pnpm run verify:chain
 ```
 
-`verify:chain` performs live read-only checks against chain `4663`, including the NFT/TBA linkage, canonical stock-token balances, Universal Router `2.1.1`, and Swap Proxy deployments. The test suite covers canonical-asset filtering, quote binding, decoded V2/V3/V4 calldata safety, complete trade orchestration, X post formatting, and outbox persistence.
+`verify:chain` performs live read-only checks against chain `4663`, including the NFT/TBA linkage, canonical stock-token balances, Universal Router `2.1.1`, and Swap Proxy deployments. The test suite covers canonical-asset filtering, quote binding, decoded V2/V3/V4 calldata safety, complete trade orchestration, X post formatting, and outbox persistence. `stonkbroker-proof --inspect-only` additionally exercises the packaged MCP client/server boundary without enabling transactions.
 
 ## Robinhood Trading MCP and onchain execution
 

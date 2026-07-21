@@ -56,14 +56,18 @@ stock token and enough value for a tiny demonstration trade.
 ```bash
 pnpm run verify:chain
 pnpm run build
+pnpm run proof -- --inspect-only --token-id <controlled NFT id>
+pnpm run proof -- --token-id <controlled NFT id> --in <symbol> --out <symbol> --amount <tiny amount> --slippage 0.5
 ```
 
-Start the MCP server, capture `system_health` and `broker_status`, request a
-small quote, review every returned field, and only then send the literal
-confirmation `EXECUTE`. Save the returned transaction URL and X post ID. Check
-the Blockscout receipt and the public X post before publishing the submission.
-If the swap confirms but X is temporarily unavailable, keep the outbox file and
-invoke `retry_x_posts`; never execute a second trade merely to recreate a post.
+The proof runner starts the MCP server, captures the tool list,
+`system_health`, and `broker_status`, requests a small quote, and then pauses.
+Review every returned field and only then type the literal confirmation
+`EXECUTE`. It writes `.stonkagent/bounty-proof.json` with mode `0600`; save the
+returned transaction URL and X post ID. Check the Blockscout receipt and the
+public X post before publishing the submission. If the swap confirms but X is
+temporarily unavailable, keep the outbox file and invoke `retry_x_posts`; never
+execute a second trade merely to recreate a post.
 
 ## Submission text
 

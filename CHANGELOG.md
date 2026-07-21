@@ -7,6 +7,16 @@ and releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-21
+
+### Added
+
+- Add `stonkbroker-proof`, an interactive MCP client that captures the tool
+  list, health, broker state, quote, confirmed transaction, and X result in a
+  mode-`0600` evidence artifact without recording credentials.
+- Add a read-only inspection mode so the complete MCP connection and public
+  onchain identity can be verified before live credentials are configured.
+
 ## [0.1.2] - 2026-07-21
 
 ### Fixed
@@ -47,7 +57,8 @@ and releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checks, and durable X posting.
 - CLI, read-only chain verification, automated tests, and public documentation.
 
-[Unreleased]: https://github.com/slkzgm/stonkbroker-agent/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/slkzgm/stonkbroker-agent/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/slkzgm/stonkbroker-agent/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/slkzgm/stonkbroker-agent/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/slkzgm/stonkbroker-agent/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/slkzgm/stonkbroker-agent/releases/tag/v0.1.0

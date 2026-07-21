@@ -22,7 +22,7 @@ const trader = new StonkTrader(config, broker, uniswap);
 
 const server = new McpServer({
   name: "stonkbroker-agent",
-  version: "0.1.2",
+  version: "0.2.0",
 });
 
 server.registerTool(

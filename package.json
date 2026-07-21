@@ -1,6 +1,6 @@
 {
   "name": "stonkbroker-agent",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "description": "MCP agent for trading Robinhood stock tokens from a StonkBroker ERC-6551 wallet and posting trades to X.",
   "license": "MIT",
@@ -31,7 +31,8 @@
   ],
   "bin": {
     "stonkbroker-agent": "dist/src/server.js",
-    "stonkbroker-cli": "dist/src/cli.js"
+    "stonkbroker-cli": "dist/src/cli.js",
+    "stonkbroker-proof": "dist/src/proof.js"
   },
   "publishConfig": {
     "access": "public",
@@ -46,6 +47,7 @@
     "dev": "tsx src/server.ts",
     "start": "node dist/src/server.js",
     "cli": "tsx src/cli.ts",
+    "proof": "node dist/src/proof.js",
     "verify:chain": "tsx src/verify-chain.ts",
     "test": "vitest run",
     "test:watch": "vitest"

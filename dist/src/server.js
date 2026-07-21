@@ -14,7 +14,7 @@ const uniswap = config.uniswapApiKey ? new UniswapClient(config.uniswapApiKey) :
 const trader = new StonkTrader(config, broker, uniswap);
 const server = new McpServer({
     name: "stonkbroker-agent",
-    version: "0.1.2",
+    version: "0.2.0",
 });
 server.registerTool("system_health", {
     description: "Check Robinhood Chain connectivity and whether quote, signing, live trading, and X posting credentials are configured. Never returns secrets.",
