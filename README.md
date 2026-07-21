@@ -102,6 +102,9 @@ The packaged CLI can also be used without cloning:
 
 ```bash
 npx --yes --package=github:slkzgm/stonkbroker-agent stonkbroker-cli status --token-id 1
+
+# Equivalent pnpm command
+pnpm dlx --package=github:slkzgm/stonkbroker-agent stonkbroker-cli status --token-id 1
 ```
 
 ## Enable live trading

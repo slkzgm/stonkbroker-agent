@@ -31,5 +31,8 @@ jobs:
       - run: pnpm run check
       - run: pnpm run test
       - run: pnpm run build
+      - name: Verify committed distribution
+        if: matrix.node == 22
+        run: test -z "$(git status --porcelain --untracked-files=all -- dist)"
       - if: matrix.node == 22
         run: pnpm pack --pack-destination "$RUNNER_TEMP"
