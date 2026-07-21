@@ -1,0 +1,70 @@
+{
+  "name": "stonkbroker-agent",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MCP agent for trading Robinhood stock tokens from a StonkBroker ERC-6551 wallet and posting trades to X.",
+  "license": "MIT",
+  "author": "StonkBroker Agent contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slkzgm/stonkbroker-agent.git"
+  },
+  "homepage": "https://github.com/slkzgm/stonkbroker-agent#readme",
+  "bugs": {
+    "url": "https://github.com/slkzgm/stonkbroker-agent/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-agent",
+    "erc-6551",
+    "robinhood-chain",
+    "stonkbroker",
+    "uniswap"
+  ],
+  "files": [
+    "dist/src",
+    "docs",
+    ".env.example",
+    "LICENSE",
+    "README.md"
+  ],
+  "bin": {
+    "stonkbroker-agent": "dist/src/server.js",
+    "stonkbroker-cli": "dist/src/cli.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "overrides": {
+    "@hono/node-server": "^2.0.5"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx src/server.ts",
+    "start": "node dist/src/server.js",
+    "cli": "tsx src/cli.ts",
+    "verify:chain": "tsx src/verify-chain.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.11.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
+    "viem": "^2.55.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
