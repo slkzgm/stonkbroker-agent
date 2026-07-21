@@ -188,9 +188,27 @@ pnpm run verify:chain
 
 `verify:chain` performs live read-only checks against chain `4663`, including the NFT/TBA linkage and canonical stock-token balances. The test suite covers canonical-asset filtering, calldata safety, X post formatting, and outbox persistence.
 
-## Why this does not use Robinhood Trading MCP
+## Robinhood Trading MCP and onchain execution
 
-Robinhood Trading MCP controls a dedicated brokerage Agentic account. A StonkBroker is an NFT on Robinhood Chain whose assets live in an ERC-6551 smart wallet. These are separate systems. This project follows the MCP idea from Robinhood's announcement, but the actual execution path must be onchain: the NFT owner calls the TBA, and the TBA trades canonical Robinhood stock tokens through Uniswap.
+[Robinhood's Agentic Trading documentation](https://robinhood.com/us/en/support/articles/agentic-trading-overview/)
+describes the Robinhood Trading MCP as connecting an AI agent to a dedicated
+Robinhood Agentic brokerage account, and explicitly says the agent can only
+place trades in that Agentic account. Separately, [Robinhood's Chain
+documentation](https://robinhood.com/us/en/support/articles/robinhood-chain-mainnet/)
+says Robinhood Chain operates independently of Robinhood brokerage and crypto
+accounts.
+
+The bounty targets a StonkBroker's ERC-6551 wallet on Robinhood Chain, so this
+project provides a separate MCP execution path for that onchain account. The
+current NFT owner authorizes the TBA call, and this implementation chooses
+Uniswap as its swap venue. Uniswap is an implementation choice, not a claim
+that it is the only possible onchain venue.
+
+An agent may connect to both MCP servers: Robinhood Trading MCP for the
+brokerage capabilities Robinhood documents, and this server for the
+StonkBroker TBA. Based on the currently published interfaces, Robinhood Trading
+MCP alone is not an execution interface for the TBA. See the
+[architecture evidence and claim boundaries](docs/ARCHITECTURE.md).
 
 ## External prerequisites for a public bounty demo
 
