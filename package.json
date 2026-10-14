@@ -57,7 +57,7 @@
   },
   "packageManager": "pnpm@10.34.5",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "dotenv": "^17.4.2",
     "viem": "^2.55.4",
     "zod": "^4.4.3"
